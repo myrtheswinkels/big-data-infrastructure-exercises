@@ -149,7 +149,7 @@ def prepare_data() -> str:
             if "emergency" in df.columns:
                 df["had_emergency"] = df["emergency"].apply(lambda x: x in emergency_types)
                 df.drop(columns=["emergency"], inplace=True)
-                #I added a new column called had_emergency, which is True if the emergency column has any of 
+                #I added a new column called had_emergency, which is True if the emergency column has any of
                 #the emergency types that I defined above.
 
             df.dropna(subset=["icao", "registration", "type", "lat", "lon"], inplace=True)
