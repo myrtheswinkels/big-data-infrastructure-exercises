@@ -4,13 +4,14 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import bdi_api
-
+from dotenv import load_dotenv
+load_dotenv()
 PROJECT_DIR = dirname(dirname(bdi_api.__file__))
 
 
 class DBCredentials(BaseSettings):
     """Use env variables prefixed with BDI_DB_"""
-
+    database: str
     host: str
     port: int = 5432
     username: str

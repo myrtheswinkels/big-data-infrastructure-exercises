@@ -7,14 +7,16 @@ from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from starlette import status
 from starlette.responses import JSONResponse
-
+from dotenv import load_dotenv
 import bdi_api
 from bdi_api.examples import v0_router
 
-# from bdi_api.s1.exercise import s1
+load_dotenv()
 from bdi_api.s1.exercise import s1
 from bdi_api.s4.exercise import s4
+from bdi_api.s7.exercise import s7
 from bdi_api.settings import Settings
+from bdi_api.settings import DBCredentials
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -65,6 +67,7 @@ if settings.telemetry:
 app.include_router(v0_router)
 app.include_router(s1)
 app.include_router(s4)
+app.include_router(s7)
 
 
 @app.get("/health", status_code=200)

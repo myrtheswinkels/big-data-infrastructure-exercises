@@ -31,6 +31,9 @@ opentelemetry-instrumentation-fastapi = "0.42b0"
 # Add your dependencies here
 boto3 = "^1.36.13"
 coverage = "^7.6.12"
+psycopg2 = "^2.9.10"
+python-dotenv = "^1.0.1"
+pandas = "^2.2.3"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.5.0"

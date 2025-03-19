@@ -24,6 +24,9 @@ docs.zip
 archive.zip
 .ruff_cache
 
+
+/bdi_api/s1/versie_1.py
+
 # vim temporary files
 *~
 .*.sw?
