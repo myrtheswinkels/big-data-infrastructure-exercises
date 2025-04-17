@@ -1,10 +1,11 @@
 from os.path import dirname, join
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import bdi_api
-from dotenv import load_dotenv
+
 load_dotenv()
 PROJECT_DIR = dirname(dirname(bdi_api.__file__))
 

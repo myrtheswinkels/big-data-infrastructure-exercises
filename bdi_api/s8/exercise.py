@@ -1,11 +1,21 @@
+import json
+from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, status
+import boto3
+import psycopg2
+from dotenv import load_dotenv
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from bdi_api.settings import DBCredentials, Settings
 
+load_dotenv()
 settings = Settings()
+s3 = boto3.client('s3')
+s3_bucket = settings.s3_bucket #hardcode my bdi-aircraft-myrthe
+s3_key = "aircraft_data/aircraft_type_fuel_consumption_rates.json"
+
 db_credentials = DBCredentials()
 BASE_URL = "https://samples.adsbexchange.com/readsb-hist/2023/11/01/"
 
@@ -28,6 +38,14 @@ class AircraftReturn(BaseModel):
     manufacturer: Optional[str]
     model: Optional[str]
 
+def get_db():
+    return psycopg2.connect(
+        dbname=db_credentials.database,
+        user=db_credentials.username,
+        password=db_credentials.password,
+        host=db_credentials.host,
+        port=db_credentials.port,
+    )
 
 @s8.get("/aircraft/")
 def list_aircraft(num_results: int = 100, page: int = 0) -> list[AircraftReturn]:
@@ -46,19 +64,40 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[AircraftReturn]
 
     """
     # TODO
-    return [
-        AircraftReturn.parse_obj(
-            {
-                "icao": "a835af",
-                "registration": "N628TS",
-                "type": "GLF6",
-                "manufacturer": "GULFSTREAM AEROSPACE CORP",
-                "model": "GVI (G650ER)",
-                "owner": "Elon Musk",
-            }
-        ),
-    ]
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        s.icao,
+                        s.registration,
+                        s.icao_type,
+                        a.ownop,
+                        a.manufacturer,
+                        a.model
+                    FROM aircraft_data s
+                    LEFT JOIN aircraft_database a ON s.icao = a.icao
+                    GROUP BY s.icao, s.registration, s.icao_type, a.ownop, a.manufacturer, a.model
+                    ORDER BY s.icao ASC
+                    LIMIT %s OFFSET %s
+                """, (num_results, page * num_results))
 
+                rows = cur.fetchall()
+
+        return [
+            AircraftReturn(
+                icao=row[0],
+                registration=row[1],
+                type=row[2],
+                owner=row[3],
+                manufacturer=row[4],
+                model=row[5],
+            )
+            for row in rows
+        ]
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 class AircraftCO2(BaseModel):
     # DO NOT MODIFY IT
@@ -98,5 +137,50 @@ def get_aircraft_co2(icao: str, day: str) -> AircraftCO2:
     ```
     """
     # TODO
-    day_to_compute = day
-    return AircraftCO2(icao=icao, hours_flown=12.2, co2=1.5)
+    try:
+        #Parse the day into a date range
+        start_time = datetime.strptime(day, "%Y-%m-%d")
+        end_time = start_time.replace(hour=23, minute=59, second=59)
+
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT COUNT(*), MAX(icao_type)
+                    FROM aircraft_data
+                    WHERE icao = %s
+                      AND timestamp >= %s AND timestamp <= %s
+                """, (icao, start_time, end_time))
+
+                row = cur.fetchone()
+                count, icao_type = row
+
+        # No data found
+        if count == 0 or not icao_type:
+            return AircraftCO2(icao=icao, hours_flown=0.0, co2=None)
+
+        #Compute hours flown
+        total_seconds = count * 5
+        hours_flown = total_seconds / 3600
+
+        #Get galph from S3
+        s3_obj = s3.get_object(Bucket=s3_bucket, Key=s3_key)
+        galph_data = json.load(s3_obj["Body"])
+
+        galph = galph_data.get(icao_type, {}).get("galph")
+        if galph is None:
+            return AircraftCO2(icao=icao, hours_flown=round(hours_flown, 2), co2=None)
+
+        #Calculate CO2
+        fuel_used_gal = hours_flown * galph
+        fuel_used_kg = fuel_used_gal * 3.04
+        co2_tons = (fuel_used_kg * 3.15) / 907.185
+
+        return AircraftCO2(
+            icao=icao,
+            hours_flown=round(hours_flown, 2),
+            co2=round(co2_tons, 2)
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
